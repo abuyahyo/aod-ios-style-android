@@ -64,6 +64,22 @@ public class AodService extends Service {
         prefs(context).edit().putBoolean("show_notifs", enabled).apply();
     }
 
+    static boolean isNotificationContentVisible(Context context) {
+        return prefs(context).getBoolean("show_notif_content", false);
+    }
+
+    static void setNotificationContentVisible(Context context, boolean visible) {
+        prefs(context).edit().putBoolean("show_notif_content", visible).apply();
+    }
+
+    static String getLastError(Context context) {
+        return prefs(context).getString("last_error", "");
+    }
+
+    private void setLastError(String message) {
+        prefs(this).edit().putString("last_error", message == null ? "" : message).apply();
+    }
+
     static boolean isNightModeEnabled(Context context) {
         return prefs(context).getBoolean("standby_night_mode", true);
     }
@@ -225,8 +241,11 @@ public class AodService extends Service {
         setEnabled(this, true);
         try {
             startForeground(NOTIF_ID, buildNotification());
+            setLastError("");
             Diag.log(this, "уведомление службы показано");
         } catch (Exception e) {
+            setLastError("Не удалось запустить постоянную службу: " + e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : " — " + e.getMessage()));
             Diag.log(this, "ошибка службы: " + e);
         }
         return START_STICKY;

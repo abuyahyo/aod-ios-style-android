@@ -48,7 +48,7 @@ d8 --release --min-api "$MINSDK" --lib "$SDK_JAR" --output "$OUT/dex" $(find "$O
 
 echo "4/5 Package"
 python3 - "$OUT/base.apk" "$OUT/dex/classes.dex" "$OUT/aligned.apk" <<'PY'
-import sys, zipfile
+import struct, sys, zipfile
 src, dex, dst = sys.argv[1:]
 with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w") as zout:
     entries = [(i, zin.read(i.filename)) for i in zin.infolist()]
@@ -60,7 +60,10 @@ with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w") as zout:
         out.external_attr = info.external_attr
         if out.compress_type == zipfile.ZIP_STORED:
             start = zout.fp.tell() + 30 + len(out.filename.encode())
-            out.extra = b"\0" * ((-start) % 4)
+            padding = (-(start + 4)) % 4
+            # ZIP extra fields are TLVs; use a valid field header plus payload
+            # so Android's ZIP reader can skip the bytes and the entry stays aligned.
+            out.extra = struct.pack("<HH", 0xD935, padding) + bytes(padding)
         zout.writestr(out, data)
 PY
 
@@ -78,7 +81,7 @@ if [ ! -f "$KEYDIR/aod.jks" ]; then
     -dname "CN=AOD Android" >/dev/null 2>&1
 fi
 apksigner sign --ks "$KEYDIR/aod.jks" --ks-key-alias aod \
-  --ks-pass "file:$KEYDIR/password" --key-pass "file:$KEYDIR/password" \
+  --ks-pass "file:$KEYDIR/password" \
   --out "$OUT/app.apk" "$OUT/aligned.apk"
 apksigner verify "$OUT/app.apk"
 echo "Built $OUT/app.apk"

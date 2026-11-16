@@ -26,6 +26,7 @@ public class MainActivity extends Activity {
     private Button standbyToggle;
     private Button wallpaperToggle;
     private Button notifToggle;
+    private Button notifContentToggle;
     private Button nightModeToggle;
 
     private Button overlayPerm;
@@ -134,6 +135,14 @@ public class MainActivity extends Activity {
         });
         add(column, notifToggle, 8);
 
+        notifContentToggle = button("Содержание уведомлений скрыто", 0xFF1C1C1E, 0xFFFFFFFF);
+        notifContentToggle.setOnClickListener(v -> {
+            boolean cur = AodService.isNotificationContentVisible(this);
+            AodService.setNotificationContentVisible(this, !cur);
+            refresh();
+        });
+        add(column, notifContentToggle, 8);
+
         nightModeToggle = button("Красный ночной режим StandBy: ВКЛ", 0xFF1C1C1E, 0xFFFFFFFF);
         nightModeToggle.setOnClickListener(v -> {
             boolean cur = AodService.isNightModeEnabled(this);
@@ -168,7 +177,9 @@ public class MainActivity extends Activity {
                 + "В темноте датчик освещенности автоматически переключает StandBy на мягкий красный свет без бликов.\n\n"
                 + "• Датчики и защита:\n"
                 + "Экран гаснет полностью в кармане или экраном вниз (датчик приближения), "
-                + "а также при включении режима энергосбережения.");
+                + "а также при включении режима энергосбережения.\n\n"
+                + "• Приватность уведомлений:\n"
+                + "По умолчанию на AOD видны только названия приложений. В настройках можно разрешить текст уведомлений.");
         help.setTextColor(0xFF6E6E73);
         help.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         help.setLineSpacing(dp(3), 1f);
@@ -297,6 +308,12 @@ public class MainActivity extends Activity {
         notifToggle.setText("Уведомления на экране: " + (notif ? "ВКЛ" : "ВЫКЛ"));
         notifToggle.setTextColor(notif ? 0xFF30D158 : 0xFF8E8E93);
 
+        boolean showNotifContent = AodService.isNotificationContentVisible(this);
+        notifContentToggle.setText(showNotifContent
+                ? "Текст уведомлений: ПОКАЗЫВАТЬ"
+                : "Текст уведомлений: СКРЫТЬ");
+        notifContentToggle.setTextColor(showNotifContent ? 0xFFFF9F0A : 0xFF30D158);
+
         boolean night = AodService.isNightModeEnabled(this);
         nightModeToggle.setText("Красный ночной режим StandBy: " + (night ? "ВКЛ" : "ВЫКЛ"));
         nightModeToggle.setTextColor(night ? 0xFFFF453A : 0xFF8E8E93);
@@ -309,7 +326,8 @@ public class MainActivity extends Activity {
         }
         status.setText((enabled ? "AOD включён" : "AOD выключен")
                 + (overlay ? " · разрешение есть" : " · нужно разрешение")
-                + (AodService.running ? " · служба работает" : " · служба не работает"));
+                + (AodService.running ? " · служба работает" : " · служба не работает")
+                + (AodService.getLastError(this).isEmpty() ? "" : "\nОшибка: " + AodService.getLastError(this)));
         if (diag != null) {
             diag.setText("Журнал:\n" + Diag.tail(this, 5));
         }

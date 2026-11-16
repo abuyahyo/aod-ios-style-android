@@ -1,22 +1,29 @@
 # AOD for Android
 
-Приложение для Android с экраном Always-On Display и режимом StandBy в стиле iOS.
-Написано на Java и стандартном Android Framework, без Gradle и сторонних библиотек.
+An Android Always-On Display and landscape charging StandBy screen inspired by iOS. It is
+written in Java using the Android framework, without Gradle or third-party libraries.
 
-## Возможности
+## Features
 
-- Приглушённый экран блокировки с системными обоями, часами, датой и уведомлениями.
-- Плавное пробуждение экрана и часов при поднятии телефона или касании видимого AOD.
-- StandBy с часами и карточками при зарядке в горизонтальном положении.
-- Затемнение экрана по датчику приближения и отключение AOD в энергосберегающем режиме.
+- Dim lock screen with the system wallpaper, clock, date, battery, alarm, and notifications.
+- Briefly brighten the screen after pickup or touch.
+- Landscape StandBy mode while charging, with clock and status cards.
+- Proximity and battery-saver handling, plus a low-light red StandBy theme.
+- Notification text is hidden by default. Enable it explicitly in the app if you want full
+  notification previews on the screen.
 
-Для работы AOD нужны разрешение показа поверх других окон и отключённая оптимизация батареи.
-Для карточек уведомлений нужен отдельный доступ к уведомлениям Android.
+## Permissions and privacy
 
-## Сборка APK
+The overlay needs "Display over other apps" permission and works more reliably when exempted
+from battery optimization. Notification cards require Android's Notification access. The app
+reads active notification titles and text locally; it does not upload them. With the default
+privacy setting, only the app name is shown. You can disable notification cards or opt in to
+show their contents in the settings screen.
 
-Нужны JDK 17, Android SDK Platform 36, Android Build Tools 36, Python 3, а также команды
-`aapt2`, `d8` и `apksigner` из Build Tools в `PATH`.
+## Build
+
+Requirements: JDK 17, Android SDK Platform 36, Android Build Tools 36, and Python 3. The
+commands `aapt2`, `d8`, `apksigner`, and `keytool` from Build Tools must be available in `PATH`.
 
 ```sh
 ANDROID_HOME=/path/to/Android/Sdk \
@@ -24,6 +31,15 @@ ANDROID_BUILD_TOOLS=/path/to/Android/Sdk/build-tools/36.0.0 \
 bash ./build-apk.sh .
 ```
 
-Можно задать путь к платформе отдельно через `SDK_JAR`. APK появится в `build/app.apk`.
-При первой сборке скрипт создаёт ключ подписи в `~/.android/aod-signing`; храните его
-вне репозитория, иначе им нельзя будет безопасно подписывать будущие обновления.
+Set `SDK_JAR` to override the platform jar. The APK is written to `build/app.apk`. On the first
+build the script creates a signing key in `~/.android/aod-signing`; keep this key and its
+password outside the repository to sign future updates with the same identity.
+
+See [README.ru.md](README.ru.md) for Russian documentation.
+
+## Compatibility notes
+
+The project targets Android 36 and supports Android 8.0 (API 26) and newer. Always-On behavior,
+background limits, sensor availability, and battery policies vary by device manufacturer; test
+on the intended device before relying on it overnight. Devices without a proximity or light
+sensor simply skip that sensor-dependent behavior.

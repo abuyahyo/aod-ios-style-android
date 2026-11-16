@@ -925,9 +925,10 @@ public class AodActivity extends Activity implements SensorEventListener {
         String title = item.title == null ? "" : item.title;
         String body = item.text == null ? "" : item.text;
         String app = item.app == null ? "" : item.app;
+        boolean showContent = AodService.isNotificationContentVisible(this);
 
         TextView titleView = new TextView(this);
-        titleView.setText(title.isEmpty() ? app : title);
+        titleView.setText(!showContent || title.isEmpty() ? app : title);
         titleView.setTextColor(0xF2FFFFFF);
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         titleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -935,7 +936,7 @@ public class AodActivity extends Activity implements SensorEventListener {
         titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
         textCol.addView(titleView);
 
-        String sub = title.isEmpty() ? body : (body.isEmpty() ? app : body);
+        String sub = showContent ? (title.isEmpty() ? body : (body.isEmpty() ? app : body)) : "";
         if (!sub.isEmpty()) {
             TextView bodyView = new TextView(this);
             bodyView.setText(sub);
