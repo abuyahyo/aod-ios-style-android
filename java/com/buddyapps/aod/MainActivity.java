@@ -1,6 +1,8 @@
 package com.buddyapps.aod;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -22,12 +24,15 @@ public class MainActivity extends Activity {
     private Button toggle;
     private Button preview;
     private Button standbyPreview;
+    private Button dreamSettings;
 
     private Button standbyToggle;
     private Button wallpaperToggle;
     private Button notifToggle;
     private Button notifContentToggle;
     private Button nightModeToggle;
+    private Button sleepScheduleToggle;
+    private Button sleepScheduleTimes;
 
     private Button overlayPerm;
     private Button batteryPerm;
@@ -99,6 +104,10 @@ public class MainActivity extends Activity {
         });
         add(column, standbyPreview, 10);
 
+        dreamSettings = button("Настроить системную заставку StandBy", 0xFF1C1C1E, 0xFF0A84FF);
+        dreamSettings.setOnClickListener(v -> openDreamSettings());
+        add(column, dreamSettings, 10);
+
         TextView settingsTitle = new TextView(this);
         settingsTitle.setText("НАСТРОЙКИ РЕЖИМОВ");
         settingsTitle.setTextColor(0xFF8E8E93);
@@ -151,6 +160,17 @@ public class MainActivity extends Activity {
         });
         add(column, nightModeToggle, 8);
 
+        sleepScheduleToggle = button("Расписание сна: ВЫКЛ", 0xFF1C1C1E, 0xFFFFFFFF);
+        sleepScheduleToggle.setOnClickListener(v -> {
+            AodService.setSleepScheduleEnabled(this, !AodService.isSleepScheduleEnabled(this));
+            refresh();
+        });
+        add(column, sleepScheduleToggle, 8);
+
+        sleepScheduleTimes = button("Время сна: 22:00–07:00", 0xFF1C1C1E, 0xFFFFFFFF);
+        sleepScheduleTimes.setOnClickListener(v -> chooseSleepStart());
+        add(column, sleepScheduleTimes, 8);
+
         overlayPerm = button("Разрешить показ поверх окон", 0xFF1C1C1E, 0xFFFF453A);
         overlayPerm.setOnClickListener(v -> openOverlaySettings());
         add(column, overlayPerm, 14);
@@ -175,11 +195,14 @@ public class MainActivity extends Activity {
                 + "справа виджеты календаря, заряда батареи и будильника.\n\n"
                 + "• Ночной режим StandBy:\n"
                 + "В темноте датчик освещенности автоматически переключает StandBy на мягкий красный свет без бликов.\n\n"
+                + "• Расписание сна:\n"
+                + "AOD не запускается в выбранные часы. По умолчанию расписание выключено.\n\n"
                 + "• Датчики и защита:\n"
                 + "Экран гаснет полностью в кармане или экраном вниз (датчик приближения), "
                 + "а также при включении режима энергосбережения.\n\n"
                 + "• Приватность уведомлений:\n"
-                + "По умолчанию на AOD видны только названия приложений. В настройках можно разрешить текст уведомлений.");
+                + "По умолчанию на AOD видны только названия приложений. В настройках можно разрешить текст уведомлений.\n\n"
+                + honorSetupHelp());
         help.setTextColor(0xFF6E6E73);
         help.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         help.setLineSpacing(dp(3), 1f);
@@ -199,6 +222,33 @@ public class MainActivity extends Activity {
         column.addView(diag, diagLp);
 
         setContentView(scroll);
+    }
+
+    private String honorSetupHelp() {
+        String maker = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase(java.util.Locale.ROOT);
+        if (!maker.contains("honor") && !maker.contains("huawei")) return "";
+        return "• Для HONOR / MagicOS:\n"
+                + "Откройте «Настройки → Приложения → Запуск приложений», выберите AOD и отключите "
+                + "автоматическое управление. Включите автозапуск, вторичный запуск и работу в фоне. "
+                + "Закрепите AOD в недавних приложениях и разрешите работу без оптимизации батареи. "
+                + "Если на телефоне включён системный AOD, выключите его во избежание конфликта. "
+                + "Названия пунктов зависят от версии MagicOS.";
+    }
+
+    private void chooseSleepStart() {
+        int start = AodService.getSleepStartMinute(this);
+        new TimePickerDialog(this, (view, hour, minute) -> {
+            int startMinute = hour * 60 + minute;
+            int end = AodService.getSleepEndMinute(this);
+            new TimePickerDialog(this, (endView, endHour, endMinute) -> {
+                AodService.setSleepSchedule(this, startMinute, endHour * 60 + endMinute);
+                refresh();
+            }, end / 60, end % 60, android.text.format.DateFormat.is24HourFormat(this)).show();
+        }, start / 60, start % 60, android.text.format.DateFormat.is24HourFormat(this)).show();
+    }
+
+    private String formatMinute(int value) {
+        return String.format(java.util.Locale.getDefault(), "%02d:%02d", value / 60, value % 60);
     }
 
     private void add(LinearLayout parent, View view, float topMargin) {
@@ -272,6 +322,21 @@ public class MainActivity extends Activity {
     }
 
     private void openNotificationSettings() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Доступ к уведомлениям")
+                    .setMessage("Если доступ заблокирован после установки APK: откройте сведения "
+                            + "о приложении, нажмите ⋮ и выберите «Разрешить ограниченные настройки». "
+                            + "Вернитесь сюда и снова нажмите «Разрешить доступ к уведомлениям».")
+                    .setNegativeButton("Позже", null)
+                    .setPositiveButton("Сведения о приложении", (dialog, which) -> {
+                        Intent details = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:" + getPackageName()));
+                        startActivity(details);
+                    })
+                    .show();
+            return;
+        }
         try {
             startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
         } catch (Exception e) {
@@ -279,6 +344,19 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(Settings.ACTION_SETTINGS));
             } catch (Exception ignored) {
             }
+        }
+    }
+
+    private void openDreamSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_DREAM_SETTINGS));
+        } catch (Exception e) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Системная заставка недоступна")
+                    .setMessage("Эта версия Android или MagicOS не открывает настройки DreamService. "
+                            + "Проверьте вручную: Настройки → Экран → Заставка.")
+                    .setPositiveButton("ОК", null)
+                    .show();
         }
     }
 
@@ -317,6 +395,13 @@ public class MainActivity extends Activity {
         boolean night = AodService.isNightModeEnabled(this);
         nightModeToggle.setText("Красный ночной режим StandBy: " + (night ? "ВКЛ" : "ВЫКЛ"));
         nightModeToggle.setTextColor(night ? 0xFFFF453A : 0xFF8E8E93);
+
+        boolean schedule = AodService.isSleepScheduleEnabled(this);
+        sleepScheduleToggle.setText("Расписание сна: " + (schedule ? "ВКЛ" : "ВЫКЛ"));
+        sleepScheduleToggle.setTextColor(schedule ? 0xFF30D158 : 0xFF8E8E93);
+        sleepScheduleTimes.setText("Время сна: "
+                + formatMinute(AodService.getSleepStartMinute(this)) + "–"
+                + formatMinute(AodService.getSleepEndMinute(this)));
 
         overlayPerm.setVisibility(overlay ? View.GONE : View.VISIBLE);
         batteryPerm.setVisibility(batteryOk ? View.GONE : View.VISIBLE);

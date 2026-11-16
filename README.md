@@ -9,6 +9,8 @@ written in Java using the Android framework, without Gradle or third-party libra
 - Briefly brighten the screen after pickup or touch.
 - Landscape StandBy mode while charging, with clock and status cards.
 - Proximity and battery-saver handling, plus a low-light red StandBy theme.
+- Optional sleep schedule that suppresses AOD during selected hours.
+- A system-managed `DreamService` StandBy clock for devices that expose Android's Screensaver settings.
 - Notification text is hidden by default. Enable it explicitly in the app if you want full
   notification previews on the screen.
 
@@ -36,6 +38,27 @@ build the script creates a signing key in `~/.android/aod-signing`; keep this ke
 password outside the repository to sign future updates with the same identity.
 
 See [README.ru.md](README.ru.md) for Russian documentation.
+
+## HONOR / MagicOS setup
+
+On HONOR devices, open **Settings → Apps → App launch**, select AOD, switch off automatic
+management, and enable auto-launch, secondary launch, and background running. Lock AOD in
+Recents and exempt it from battery optimization. If the device has a built-in Always-On Display,
+turn that off to avoid two displays competing. Menu labels vary by MagicOS version.
+
+After sideloading on Android 13 or later, notification access may be blocked as a restricted
+setting. Open the app's system App info, use the ⋮ menu to allow restricted settings, return to
+AOD, and enable Notification access.
+
+## System-managed StandBy
+
+The app's **Set up system StandBy screensaver** button opens Android's Screensaver/Dream settings.
+On the tested Honor X9d (MagicOS, Android 16), that screen opens but offers only the photo
+screensaver and does not list **AOD StandBy**. The `DreamService` is registered in the app, but this
+device does not expose it through its built-in settings. On devices that list third-party
+DreamService components, it can be selected there. This system screensaver is for charging and idle
+time; it does not replace lock-screen AOD. The regular lock-screen simulation still cannot enter
+the system's low-power display doze state.
 
 ## Compatibility notes
 

@@ -1,6 +1,7 @@
 package com.buddyapps.aod;
 
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
@@ -91,6 +92,17 @@ public class NotifService extends NotificationListenerService {
             if (pkg.equals("android")) return null;
             if ((n.flags & Notification.FLAG_ONGOING_EVENT) != 0) return null;
             if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return null;
+            if (n.visibility == Notification.VISIBILITY_SECRET) return null;
+            NotificationListenerService.RankingMap rankings = getCurrentRanking();
+            if (rankings != null) {
+                NotificationListenerService.Ranking ranking = new NotificationListenerService.Ranking();
+                if (rankings.getRanking(sbn.getKey(), ranking)
+                        && (ranking.getImportance() <= NotificationManager.IMPORTANCE_MIN
+                        || ranking.isAmbient()
+                        || ranking.getLockscreenVisibilityOverride() == Notification.VISIBILITY_SECRET)) {
+                    return null;
+                }
+            }
             Bundle extras = n.extras;
             if (extras == null) return null;
             String title = String.valueOf(extras.getCharSequence(Notification.EXTRA_TITLE, ""));

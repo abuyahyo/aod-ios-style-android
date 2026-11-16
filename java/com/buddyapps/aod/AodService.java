@@ -16,6 +16,8 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 
+import java.util.Calendar;
+
 /** Waits for the screen to turn off, then brings up the dim iOS-style clock / StandBy mode. */
 public class AodService extends Service {
 
@@ -88,6 +90,37 @@ public class AodService extends Service {
         prefs(context).edit().putBoolean("standby_night_mode", enabled).apply();
     }
 
+    static boolean isSleepScheduleEnabled(Context context) {
+        return prefs(context).getBoolean("sleep_schedule_enabled", false);
+    }
+
+    static void setSleepScheduleEnabled(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean("sleep_schedule_enabled", enabled).apply();
+    }
+
+    static int getSleepStartMinute(Context context) {
+        return prefs(context).getInt("sleep_start_minute", 22 * 60);
+    }
+
+    static int getSleepEndMinute(Context context) {
+        return prefs(context).getInt("sleep_end_minute", 7 * 60);
+    }
+
+    static void setSleepSchedule(Context context, int startMinute, int endMinute) {
+        prefs(context).edit().putInt("sleep_start_minute", startMinute)
+                .putInt("sleep_end_minute", endMinute).apply();
+    }
+
+    static boolean isSleepTime(Context context) {
+        if (!isSleepScheduleEnabled(context)) return false;
+        Calendar now = Calendar.getInstance();
+        int minute = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE);
+        int start = getSleepStartMinute(context);
+        int end = getSleepEndMinute(context);
+        if (start == end) return true;
+        return start < end ? minute >= start && minute < end : minute >= start || minute < end;
+    }
+
     static void start(Context context, boolean enable) {
         Intent intent = new Intent(context, AodService.class);
         intent.setAction(enable ? ACTION_START : ACTION_STOP);
@@ -116,6 +149,11 @@ public class AodService extends Service {
                 String action = intent == null ? null : intent.getAction();
                 if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                     onScreenOff();
+                } else if (PowerManager.ACTION_POWER_SAVE_MODE_CHANGED.equals(action)) {
+                    PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+                    if (pm != null && pm.isPowerSaveMode()) {
+                        Diag.log(context, "энергосбережение включено — AOD не запускаю");
+                    }
                 } else if (Intent.ACTION_POWER_CONNECTED.equals(action)) {
                     try {
                         PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
@@ -132,6 +170,7 @@ public class AodService extends Service {
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         filter.addAction(Intent.ACTION_SCREEN_ON);
         filter.addAction(Intent.ACTION_POWER_CONNECTED);
+        filter.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED);
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
@@ -143,6 +182,15 @@ public class AodService extends Service {
         Diag.log(this, "экран погас");
         if (!isEnabled(this)) {
             Diag.log(this, "AOD выключен, не показываю");
+            return;
+        }
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null && pm.isPowerSaveMode()) {
+            Diag.log(this, "энергосбережение — AOD не запускаю");
+            return;
+        }
+        if (isSleepTime(this)) {
+            Diag.log(this, "расписание сна — AOD не запускаю");
             return;
         }
         if (AodActivity.showing) return;

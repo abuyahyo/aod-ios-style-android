@@ -1,6 +1,5 @@
 package com.buddyapps.aod;
 
-import android.Manifest;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
@@ -106,6 +105,7 @@ public class AodActivity extends Activity implements SensorEventListener {
     private boolean isStandBy = false;
     private boolean isCharging = false;
     private boolean isLandscape = false;
+    private boolean requestedLandscape = false;
     private boolean isNightMode = false;
     private boolean forceStandByPreview = false;
     private int standByClockStyle = 0; // 0 = Stacked, 1 = Wide
@@ -113,6 +113,8 @@ public class AodActivity extends Activity implements SensorEventListener {
     private boolean brightened = false;
     private boolean onScreen = false;
     private boolean covered = false;
+    private boolean faceDown = false;
+    private int faceDownSamples = 0;
     private long lastBurnInShiftMinute = -1L;
     private int batteryPct = -1;
     private boolean batteryIsCharging = false;
@@ -127,7 +129,6 @@ public class AodActivity extends Activity implements SensorEventListener {
     private CameraManager cameraManager;
     private GradientDrawable scrimDrawable;
 
-    private static final int REQ_TORCH = 42;
 
     private final Runnable dimAgain = new Runnable() {
         @Override
@@ -173,6 +174,8 @@ public class AodActivity extends Activity implements SensorEventListener {
                 dismiss();
             } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                 if (onScreen) dismiss();
+            } else if (PowerManager.ACTION_POWER_SAVE_MODE_CHANGED.equals(action)) {
+                checkBatterySaver();
             } else if (Intent.ACTION_BATTERY_CHANGED.equals(action)) {
                 updateBatteryFromIntent(intent);
                 evaluateMode();
@@ -192,6 +195,11 @@ public class AodActivity extends Activity implements SensorEventListener {
         @Override
         public void run() {
             if (!onScreen) return;
+            if (AodService.isSleepTime(AodActivity.this)) {
+                Diag.log(AodActivity.this, "расписание сна — AOD погашен");
+                dismiss();
+                return;
+            }
             updateClocksAndWidgets();
             burnInShift();
             checkBatterySaver();
@@ -231,6 +239,7 @@ public class AodActivity extends Activity implements SensorEventListener {
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
         hideSystemBars();
+        preferLowestSupportedRefreshRate();
         setBrightness(DIM);
 
         checkInitialBattery();
@@ -291,6 +300,13 @@ public class AodActivity extends Activity implements SensorEventListener {
     private void evaluateMode() {
         boolean standByAllowed = AodService.isStandByEnabled(this);
         boolean shouldBeStandBy = forceStandByPreview || (standByAllowed && isCharging && isLandscape);
+        boolean useLandscape = forceStandByPreview || (standByAllowed && isCharging && isLandscape);
+        if (useLandscape != requestedLandscape) {
+            requestedLandscape = useLandscape;
+            setRequestedOrientation(useLandscape
+                    ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        }
         if (shouldBeStandBy != isStandBy) {
             isStandBy = shouldBeStandBy;
             applyModeSwitch();
@@ -356,6 +372,24 @@ public class AodActivity extends Activity implements SensorEventListener {
         WindowManager.LayoutParams lp = getWindow().getAttributes();
         lp.screenBrightness = value;
         getWindow().setAttributes(lp);
+    }
+
+    private void preferLowestSupportedRefreshRate() {
+        try {
+            android.view.Display display = getWindowManager().getDefaultDisplay();
+            android.view.Display.Mode[] modes = display.getSupportedModes();
+            float lowest = Float.MAX_VALUE;
+            for (android.view.Display.Mode mode : modes) {
+                lowest = Math.min(lowest, mode.getRefreshRate());
+            }
+            if (lowest < Float.MAX_VALUE) {
+                WindowManager.LayoutParams lp = getWindow().getAttributes();
+                lp.preferredRefreshRate = lowest;
+                getWindow().setAttributes(lp);
+            }
+        } catch (Exception e) {
+            Diag.log(this, "не удалось запросить низкую частоту обновления: " + e.getMessage());
+        }
     }
 
     private int dp(float v) {
@@ -954,14 +988,13 @@ public class AodActivity extends Activity implements SensorEventListener {
     private void burnInShift() {
         View target = isStandBy ? standByContent : portraitContent;
         if (target == null) return;
-        long minute = System.currentTimeMillis() / 60000L;
-        if (minute == lastBurnInShiftMinute) return;
-        lastBurnInShiftMinute = minute;
-        // Walk a small 3x3 grid, including a wider offset than the previous
-        // 4dp random nudge, so bright pixels do not sit in one place all night.
-        int slot = (int) (minute % 9L);
-        int dx = (slot % 3 - 1) * dp(8);
-        int dy = (slot / 3 - 1) * dp(8);
+        long slot = System.currentTimeMillis() / 300000L;
+        if (slot == lastBurnInShiftMinute) return;
+        lastBurnInShiftMinute = slot;
+        // Cycle through a 3x3 grid with a 2-pixel offset every five minutes.
+        int position = (int) (slot % 9L);
+        int dx = (position % 3 - 1) * 2;
+        int dy = (position / 3 - 1) * 2;
         target.setTranslationX(dx);
         target.setTranslationY(dy);
     }
@@ -1128,6 +1161,22 @@ public class AodActivity extends Activity implements SensorEventListener {
         } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             float magnitude = (float) Math.sqrt(event.values[0] * event.values[0]
                     + event.values[1] * event.values[1] + event.values[2] * event.values[2]);
+            boolean faceDownNow = event.values[2] < -7.0f
+                    && Math.abs(magnitude - SensorManager.GRAVITY_EARTH) < 2.5f;
+            if (faceDownNow) {
+                faceDownSamples++;
+                if (faceDownSamples >= 3 && !faceDown) {
+                    faceDown = true;
+                    applyCover();
+                    Diag.log(this, "телефон лежит экраном вниз — AOD погашен");
+                }
+            } else {
+                faceDownSamples = 0;
+                if (faceDown) {
+                    faceDown = false;
+                    applyCover();
+                }
+            }
             if (Math.abs(magnitude - SensorManager.GRAVITY_EARTH) > 1.2f) {
                 pickupMotionSamples++;
             } else {
@@ -1167,7 +1216,7 @@ public class AodActivity extends Activity implements SensorEventListener {
     }
 
     private void applyCover() {
-        if (covered) {
+        if (covered || faceDown) {
             brightened = false;
             if (torchOn) setTorch(false);
             if (portraitContent != null) portraitContent.setAlpha(0f);
@@ -1208,6 +1257,7 @@ public class AodActivity extends Activity implements SensorEventListener {
         filter.addAction(Intent.ACTION_BATTERY_CHANGED);
         filter.addAction(Intent.ACTION_POWER_CONNECTED);
         filter.addAction(Intent.ACTION_POWER_DISCONNECTED);
+        filter.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED);
         registerReceiver(receiver, filter);
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -1255,6 +1305,8 @@ public class AodActivity extends Activity implements SensorEventListener {
         onScreen = false;
         showing = false;
         covered = false;
+        faceDown = false;
+        faceDownSamples = 0;
         pickupWakePending = false;
         pickupMotionSamples = 0;
         handler.removeCallbacks(tick);
@@ -1306,11 +1358,6 @@ public class AodActivity extends Activity implements SensorEventListener {
 
     private void onFlashlight() {
         findTorch();
-        if (Build.VERSION.SDK_INT >= 23
-                && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_TORCH);
-            return;
-        }
         if (cameraManager == null || torchId == null) {
             Toast.makeText(this, "Фонарик недоступен", Toast.LENGTH_SHORT).show();
             return;
@@ -1323,7 +1370,8 @@ public class AodActivity extends Activity implements SensorEventListener {
         try {
             cameraManager.setTorchMode(torchId, on);
         } catch (SecurityException se) {
-            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_TORCH);
+            Diag.log(this, "фонарику требуется CAMERA: " + se.getMessage());
+            Toast.makeText(this, "Для фонарика требуется разрешение камеры", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Toast.makeText(this, "Не удалось включить фонарик", Toast.LENGTH_SHORT).show();
         }
@@ -1352,16 +1400,6 @@ public class AodActivity extends Activity implements SensorEventListener {
             dismiss();
         } catch (Exception e) {
             Toast.makeText(this, "Камера не открылась", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_TORCH && grantResults.length > 0
-                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            findTorch();
-            setTorch(true);
         }
     }
 
